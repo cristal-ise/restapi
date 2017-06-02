@@ -25,9 +25,7 @@ import java.nio.ByteBuffer;
 import java.security.InvalidKeyException;
 import java.util.Date;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
@@ -90,19 +88,6 @@ public class RestHandler {
         decryptCipher.init(Cipher.DECRYPT_MODE, cookieKey, new IvParameterSpec(encryptCipher.getIV()));
     }
 
-    private AuthData decryptAuthData(String authData)
-            throws InvalidAgentPathException, IllegalBlockSizeException, BadPaddingException, InvalidDataException
-    {
-        byte[] bytes = DatatypeConverter.parseBase64Binary(authData);
-        return new AuthData(decryptCipher.doFinal(bytes));
-    }
-
-    protected String encryptAuthData(AuthData auth)
-            throws IllegalBlockSizeException, BadPaddingException {
-        byte[] bytes = encryptCipher.doFinal(auth.getBytes());
-        return DatatypeConverter.printBase64Binary(bytes);
-    }
-
     public Response toJSON(Object data) {
         String childPathDataJSON;
         try {
@@ -127,23 +112,20 @@ public class RestHandler {
     /**
      * Authorization data is decrypted from the input string and the corresponding AgentPath is returned
      * 
-     * @param authData authorisation data normally taken from cookie or token
-     * @return AgentPath created from the decrypted autData
+     * @param authToken authorisation data normally taken from cookie or token
+     * @return AgentPath created from the decrypted authToken
      */
-    public AgentPath checkAuthData(String authData) {
+    public AgentPath checkAuthData(String authToken) {
         if (!requireLogin) return null;
 
-        if (authData == null)
+        if (authToken == null)
             throw ItemUtils.createWebAppException("Missing authentication data", Response.Status.UNAUTHORIZED);
 
         try {
-            AuthData data = decryptAuthData(authData);
-            return data.agent;
-        } catch (InvalidAgentPathException | InvalidDataException e) {
-            throw ItemUtils.createWebAppException("Invalid agent or login data", e, Response.Status.UNAUTHORIZED);
+            return Gateway.getAuthManager().decodeAgentPath(authToken);
         } catch (Exception e) {
             Logger.error(e);
-            throw ItemUtils.createWebAppException("Error reading authentication data", e, Response.Status.UNAUTHORIZED);
+            throw ItemUtils.createWebAppException(e.getMessage(), e, Response.Status.UNAUTHORIZED);
         }
     }
 

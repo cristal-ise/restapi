@@ -30,6 +30,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 
+import org.cristalise.kernel.common.AccessRightsException;
 import org.cristalise.kernel.common.InvalidDataException;
 import org.cristalise.kernel.common.ObjectNotFoundException;
 import org.cristalise.kernel.lookup.AgentPath;
@@ -43,17 +44,16 @@ public class TokenLogin extends RestHandler {
     @Produces(MediaType.TEXT_PLAIN)
     public Response login(@QueryParam("user") final String user, @QueryParam("pass") final String pass, @Context final UriInfo uri)
     {
+    	String authToken = null;
         try {
-            if (!Gateway.getAuthenticator().authenticate(user, pass, null)) {
-                throw new WebApplicationException("Bad username/password", 401);
-            }
+            authToken = Gateway.getAuthenticator().authenticate(user, pass, null);
         }
         catch (InvalidDataException e) {
             Logger.error(e);
             throw new WebApplicationException("Problem logging in");
         }
-        catch (ObjectNotFoundException e1) {
-            throw new WebApplicationException("Bad username/password", 401);
+        catch (AccessRightsException e) {
+            throw new WebApplicationException(e.getMessage(), Response.Status.UNAUTHORIZED);
         }
 
         AgentPath agentPath;
@@ -62,15 +62,11 @@ public class TokenLogin extends RestHandler {
         }
         catch (ObjectNotFoundException e) {
             Logger.error(e);
-            throw new WebApplicationException("Agent '" + user + "' not found", 404);
+            throw new WebApplicationException("Agent '" + user + "' not found", Response.Status.UNAUTHORIZED);
         }
 
-        // create and set token
-        AuthData agentData = new AuthData(agentPath);
         try {
-
-            String token = encryptAuthData(agentData);
-            return Response.ok(token).build();
+            return Response.ok(authToken).build();
         }
         catch (Exception e) {
             Logger.error(e);

@@ -23,8 +23,8 @@ package org.cristalise.restapi;
 import java.io.IOException;
 import java.net.URI;
 
+import org.cristalise.kernel.common.AccessRightsException;
 import org.cristalise.kernel.common.InvalidDataException;
-import org.cristalise.kernel.common.ObjectNotFoundException;
 import org.cristalise.kernel.common.PersistencyException;
 import org.cristalise.kernel.process.AbstractMain;
 import org.cristalise.kernel.process.Gateway;
@@ -51,13 +51,13 @@ public class Main extends StandardClient {
      * @throws BadArgumentsException Bad Arguments
      * @throws InvalidDataException Invalid Data
      * @throws PersistencyException Persistency problem
-     * @throws ObjectNotFoundException Object Not Found
+     * @throws AccessRightsException could not initialize Authenticator
      */
     public static void startServer(String[] args) 
             throws BadArgumentsException, 
                    InvalidDataException, 
                    PersistencyException, 
-                   ObjectNotFoundException
+                   AccessRightsException
     {
         setShutdownHandler(new ShutdownHandler() {
             @Override
@@ -91,14 +91,14 @@ public class Main extends StandardClient {
      * @throws BadArgumentsException Bad Arguments
      * @throws InvalidDataException Invalid Data
      * @throws PersistencyException Persistency problem
-     * @throws ObjectNotFoundException Object Not Found
+     * @throws AccessRightsException could not initialize Authenticator
      */
     public static void main(String[] args)
             throws IOException,
                    InvalidDataException,
                    BadArgumentsException,
                    PersistencyException,
-                   ObjectNotFoundException
+                   AccessRightsException
     {
         startServer(args);
 

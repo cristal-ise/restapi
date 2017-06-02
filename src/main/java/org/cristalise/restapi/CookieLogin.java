@@ -24,12 +24,14 @@ import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.NewCookie;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 
+import org.cristalise.kernel.common.AccessRightsException;
 import org.cristalise.kernel.common.InvalidDataException;
 import org.cristalise.kernel.common.ObjectNotFoundException;
 import org.cristalise.kernel.lookup.AgentPath;
@@ -42,17 +44,16 @@ public class CookieLogin extends RestHandler {
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     public Response login(@QueryParam("user") String user, @QueryParam("pass") String pass, @Context UriInfo uri) {
+    	String authToken = null;
         try {
-            if (!Gateway.getAuthenticator().authenticate(user, pass, null))
-                throw ItemUtils.createWebAppException("Bad username/password", Response.Status.UNAUTHORIZED);
+            authToken = Gateway.getAuthenticator().authenticate(user, pass, null);
         }
         catch (InvalidDataException e) {
             Logger.error(e);
-            throw ItemUtils.createWebAppException("Problem logging in");
+            throw new WebApplicationException("Problem logging in");
         }
-        catch (ObjectNotFoundException e1) {
-            Logger.msg(5, "CookieLogin.login() - Bad username/password");
-            throw ItemUtils.createWebAppException("Bad username/password", Response.Status.UNAUTHORIZED);
+        catch (AccessRightsException e) {
+            throw new WebApplicationException(e.getMessage(), Response.Status.UNAUTHORIZED);
         }
 
         AgentPath agentPath;
@@ -61,7 +62,7 @@ public class CookieLogin extends RestHandler {
         }
         catch (ObjectNotFoundException e) {
             Logger.error(e);
-            throw ItemUtils.createWebAppException("Agent '" + user + "' not found", Response.Status.NOT_FOUND);
+            throw ItemUtils.createWebAppException("Agent '" + user + "' not found", Response.Status.UNAUTHORIZED);
         }
 
         // create and set cookie
@@ -71,9 +72,9 @@ public class CookieLogin extends RestHandler {
 
             int cookieLife = Gateway.getProperties().getInt("REST.loginCookieLife", 0);
             if (cookieLife > 0)
-                cookie = new NewCookie(COOKIENAME, encryptAuthData(agentData), "/", null, null, cookieLife, false);
+                cookie = new NewCookie(COOKIENAME, authToken, "/", null, null, cookieLife, false);
             else
-                cookie = new NewCookie(COOKIENAME, encryptAuthData(agentData));
+                cookie = new NewCookie(COOKIENAME, authToken);
             return Response.ok().cookie(cookie).build();
         }
         catch (Exception e) {
