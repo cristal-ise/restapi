@@ -376,11 +376,14 @@ public class ItemRoot extends ItemUtils {
     }
 
     @POST
-    @Consumes( {MediaType.TEXT_XML, MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON } )
-    @Produces( {MediaType.TEXT_XML, MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON } )
+    @Consumes( MediaType.MULTIPART_FORM_DATA )
+    @Produces( MediaType.MULTIPART_FORM_DATA)
+//    @Consumes( {MediaType.TEXT_XML, MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON } )
+//    @Produces( {MediaType.TEXT_XML, MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON } )
     @Path("{activityPath: .*}")
     public String requestTransition(    String      postData,
             @Context                    HttpHeaders headers,
+            @FormDataParam ("file")     InputStream file,
             @PathParam("uuid")          String      uuid,
             @PathParam("activityPath")  String      actPath,
             @QueryParam("transition")   String      transition,
@@ -410,11 +413,12 @@ public class ItemRoot extends ItemUtils {
             }
             else {
                 transition = extractAndCcheckTransitionName(transition, uri);
-                String execJob = executeJob(item, postData, types, actPath, transition, agent);
+                String execJob = executeJob(item, postData, types, actPath, transition, agent, file);
+
                 if (types.contains(MediaType.APPLICATION_XML) || types.contains(MediaType.TEXT_XML)) {
-                	return execJob;
+                    return execJob;
                 } else {
-                	return XML.toJSONObject(execJob).toString();
+                    return XML.toJSONObject(execJob).toString();
                 }
                 
             }
@@ -446,85 +450,6 @@ public class ItemRoot extends ItemUtils {
 
 
     /**
-     * Method for handling binary uplaod POST methods
-     * 
-     * @param postData
-     * @param headers
-     * @param uuid
-     * @param actPath
-     * @param transition
-     * @param authCookie
-     * @param uri
-     * @return
-     */
-    @POST
-    @Consumes( MediaType.MULTIPART_FORM_DATA )
-    @Produces( MediaType.MULTIPART_FORM_DATA)
-    @Path("{binaryUploadPath: .*}")
-    public String requestBinaryTransition(    String      postData,
-            @FormDataParam ("file") InputStream file,
-            @Context                    HttpHeaders headers,
-            @PathParam("uuid")          String      uuid,
-            @PathParam("binaryUploadPath")  String      actPath,
-            @QueryParam("transition")   String      transition,
-            @CookieParam(COOKIENAME)    Cookie      authCookie,
-            @Context                    UriInfo     uri)
-    {
-        AgentProxy agent = null;
-        try {
-            agent = (AgentProxy)Gateway.getProxyManager().getProxy( checkAuthCookie(authCookie) );
-        }
-        catch (ObjectNotFoundException e1) {
-            throw ItemUtils.createWebAppException(e1.getMessage(), Response.Status.UNAUTHORIZED);
-        }
-
-        if (actPath == null) throw ItemUtils.createWebAppException("Must specify activity path", Response.Status.BAD_REQUEST);
-        
-        if (file == null) throw ItemUtils.createWebAppException("Must provide a file to upload", Response.Status.BAD_REQUEST);
-
-        // Find agent
-        ItemProxy item = getProxy(uuid);
-
-        try {
-            List<String> types = headers.getRequestHeader(HttpHeaders.CONTENT_TYPE);
-
-            Logger.msg(5, "ItemRoot.requestTransition() postData:%s", postData);
-
-            if (actPath.startsWith("workflow/predefined")) {
-                return executePredefinedStep(item, postData, types, actPath, agent);
-            }
-            else {
-                transition = extractAndCcheckTransitionName(transition, uri);
-
-                return executeUploadJob(item, file, postData, types, actPath, transition, agent);
-            }
-        }
-        catch (OutcomeBuilderException | InvalidDataException | ScriptErrorException | ObjectAlreadyExistsException | InvalidCollectionModification e) {
-            Logger.error(e);
-            throw ItemUtils.createWebAppException(e.getMessage(), e, Response.Status.BAD_REQUEST);
-        }
-        catch (AccessRightsException e) { // agent doesn't hold the right to execute
-            throw ItemUtils.createWebAppException(e.getMessage(), e, Response.Status.UNAUTHORIZED);
-        }
-        catch (ObjectNotFoundException e) { // workflow, schema, script etc not found.
-            Logger.error(e);
-            throw ItemUtils.createWebAppException(e.getMessage(), e, Response.Status.NOT_FOUND);
-        }
-        catch (InvalidTransitionException e) { // activity has already changed state
-            Logger.error(e);
-            throw ItemUtils.createWebAppException(e.getMessage(), e, Response.Status.CONFLICT);
-        }
-        catch (PersistencyException e) { // database failure
-            Logger.error(e);
-            throw ItemUtils.createWebAppException(e.getMessage(), e, Response.Status.INTERNAL_SERVER_ERROR);
-        }
-        catch (Exception e) { // any other failure
-            Logger.error(e);
-            throw ItemUtils.createWebAppException(e.getMessage(), Response.Status.INTERNAL_SERVER_ERROR);
-        }
-    }
-    
-    /**
      * 
      * @param item
      * @param postData
@@ -554,12 +479,10 @@ public class ItemRoot extends ItemUtils {
 
         return agent.execute(item, actPath, postData);
     }
-    
-    
+
     /**
      * 
      * @param item
-     * @param file
      * @param postData
      * @param types
      * @param actPath
@@ -575,56 +498,19 @@ public class ItemRoot extends ItemUtils {
      * @throws ObjectAlreadyExistsException
      * @throws InvalidCollectionModification
      * @throws ScriptErrorException
-     * @throws IOException
+     * @throws IOException 
      */
-    private String executeUploadJob(ItemProxy item, InputStream file, String postData, List<String> types, String actPath, String transition, AgentProxy agent)
+    private String executeJob(ItemProxy item, String postData, List<String> types, String actPath, String transition, AgentProxy agent, InputStream file)
             throws AccessRightsException, ObjectNotFoundException, PersistencyException, InvalidDataException, OutcomeBuilderException,
-                   InvalidTransitionException, ObjectAlreadyExistsException, InvalidCollectionModification, ScriptErrorException, IOException
+                   InvalidTransitionException, ObjectAlreadyExistsException, InvalidCollectionModification, ScriptErrorException, IOException 
     {
         Job thisJob = item.getJobByTransitionName(actPath, transition, agent);
+
+        if (thisJob == null)
+            throw ItemUtils.createWebAppException("Job not found for actPath:"+actPath+" transition:"+transition, Response.Status.NOT_FOUND);
         
-        byte[] binaryData = IOUtils.toByteArray(file);
-
-        if (thisJob == null)
-            throw ItemUtils.createWebAppException("Job not found for actPath:"+actPath+" transition:"+transition, Response.Status.NOT_FOUND);
-
-        // set outcome if required
-        if (thisJob.hasOutcome()) {
-            OutcomeAttachment outcomeAttachment =
-                    new OutcomeAttachment(item.getPath(), thisJob.getSchema().getName(), thisJob.getSchema().getVersion(), -1, MediaType.APPLICATION_OCTET_STREAM, binaryData); 
-            
-            thisJob.setAttachment(outcomeAttachment);       
-        }
-        return agent.execute(thisJob);
-    }
-
-    /**
-     * 
-     * @param item
-     * @param postData
-     * @param types
-     * @param actPath
-     * @param transition
-     * @param agent
-     * @return
-     * @throws AccessRightsException
-     * @throws ObjectNotFoundException
-     * @throws PersistencyException
-     * @throws InvalidDataException
-     * @throws OutcomeBuilderException
-     * @throws InvalidTransitionException
-     * @throws ObjectAlreadyExistsException
-     * @throws InvalidCollectionModification
-     * @throws ScriptErrorException
-     */
-    private String executeJob(ItemProxy item, String postData, List<String> types, String actPath, String transition, AgentProxy agent)
-            throws AccessRightsException, ObjectNotFoundException, PersistencyException, InvalidDataException, OutcomeBuilderException,
-                   InvalidTransitionException, ObjectAlreadyExistsException, InvalidCollectionModification, ScriptErrorException 
-    {
-        Job thisJob = item.getJobByTransitionName(actPath, transition, agent);
-
-        if (thisJob == null)
-            throw ItemUtils.createWebAppException("Job not found for actPath:"+actPath+" transition:"+transition, Response.Status.NOT_FOUND);
+        byte[] binaryData = null;
+        if (file != null) binaryData = IOUtils.toByteArray(file);
 
         // set outcome if required
         if (thisJob.hasOutcome()) {
@@ -636,6 +522,13 @@ public class ItemRoot extends ItemUtils {
                 builder.addJsonInstance(new JSONObject(postData));
                 //Outcome can be invalid at this point, because Script/Query can be executed later
                 thisJob.setOutcome(builder.getOutcome(false)); 
+            }
+
+            if (binaryData != null && binaryData.length > 0) {
+                OutcomeAttachment outcomeAttachment =
+                    new OutcomeAttachment(item.getPath(), thisJob.getSchema().getName(), thisJob.getSchema().getVersion(), -1, MediaType.APPLICATION_OCTET_STREAM, binaryData); 
+
+                thisJob.setAttachment(outcomeAttachment);
             }
         }
         return agent.execute(thisJob);
