@@ -64,6 +64,7 @@ abstract public class RestHandler {
 
     private ObjectMapper mapper;
     private boolean requireLogin = true;
+    private int defaultLogLevel;
 
     private static SecretKey cookieKey;
     private static Cipher encryptCipher;
@@ -96,6 +97,7 @@ abstract public class RestHandler {
     public RestHandler() {
         mapper = new ObjectMapper();
         requireLogin = Gateway.getProperties().getBoolean("REST.requireLoginCookie", true);
+        defaultLogLevel = Gateway.getProperties().getInt("LOGGER.defaultLevel", 8);
     }
 
     private static void initKeys(int keySize) 
@@ -115,7 +117,7 @@ abstract public class RestHandler {
     }
 
     private synchronized AuthData decryptAuthData(String authData)
-            throws InvalidAgentPathException, IllegalBlockSizeException, BadPaddingException, InvalidDataException
+        throws InvalidAgentPathException, IllegalBlockSizeException, BadPaddingException, InvalidDataException
     {
         byte[] bytes = DatatypeConverter.parseBase64Binary(authData);
 
@@ -123,15 +125,19 @@ abstract public class RestHandler {
             try {
                 return new AuthData(decryptCipher.doFinal(bytes));
             }
+            catch (final InvalidDataException e) {
+                throw e;
+            }
             catch (final Exception e) {
-                Logger.error("Exception caught in decryptAuthData: #" + cntRetries + ": " + e);
+                Logger.error("Exception caught in decryptAuthData: #" + cntRetries + ": " + e.getMessage());
+                if (Logger.doLog(defaultLogLevel)) Logger.error(e);
                 if (cntRetries == 5) {
                     throw e;
                 }
-                Logger.error(e);
             }
         }
     }
+
 
     protected synchronized String encryptAuthData(AuthData auth)
             throws IllegalBlockSizeException, BadPaddingException
@@ -178,12 +184,12 @@ abstract public class RestHandler {
             AuthData data = decryptAuthData(authData);
             return data.agent;
         } catch (InvalidAgentPathException | InvalidDataException e) {
-            Logger.error("authData:"+authData);
-            Logger.error(e);
+            Logger.error(e.getMessage() + " - authData:"+authData);
+            if (Logger.doLog(defaultLogLevel)) Logger.error(e);
             throw ItemUtils.createWebAppException("Invalid agent or login data", e, Response.Status.UNAUTHORIZED);
         } catch (Exception e) {
-            Logger.error("authData:"+authData);
-            Logger.error(e);
+            Logger.error(e.getMessage() + " - authData:"+authData);
+            if (Logger.doLog(defaultLogLevel)) Logger.error(e);
             throw ItemUtils.createWebAppException("Error reading authentication data", e, Response.Status.UNAUTHORIZED);
         }
     }

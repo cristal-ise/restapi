@@ -99,10 +99,12 @@ public abstract class ItemUtils extends RestHandler {
     protected static final String PREDEFINED_PATH = "workflow/predefined/";
 
     final DateFormat dateFormatter;
+    private static int defaultLogLevel;
 
     public ItemUtils() {
         super();
         dateFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        defaultLogLevel = Gateway.getProperties().getInt("LOGGER.defaultLevel", 8);
     }
 
     protected static URI getItemURI(UriInfo uri, ItemProxy item, Object...path) {
@@ -526,7 +528,7 @@ public abstract class ItemUtils extends RestHandler {
      */
     public static WebApplicationException createWebAppException(String msg, Exception ex, Response.Status status) {
         Logger.debug(8, "ItemUtils.createWebAppException() - msg:"+ msg + " status:" + status);
-        if (ex != null) { Logger.error(ex); }
+        if (ex != null && Logger.doLog(defaultLogLevel)) Logger.error(ex);
 
         if (Gateway.getProperties().getBoolean("REST.Debug.errorsWithBody", false)) {
             StringBuffer sb = new StringBuffer("[errorMessage]");
